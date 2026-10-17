@@ -107,8 +107,20 @@ function nameList(room,hostControls=false){
   const list=state.players.filter(p=>p.room===room);const leader=state.leaders[room];
   return `<div class="roster">${list.map(p=>`<div class="person ${leader===p.id?'leader':''} ${p.removed?'removed':''}"><div><b>${esc(p.name)}</b> ${leader===p.id?'<span class="tag">★ LEADER</span>':''} ${p.removed?'<span class="tag">REMOVED</span>':''}${state.phase==='REVEALED'?`<p class="tag">${esc(p.card)}</p>`:''}</div>${hostControls?`<div class="row">${['ROUND','LOCKING'].includes(state.phase)&&!p.removed&& !state.locked[room]?btn('LEADER','host-leader',{room,id:p.id},'small secondary'):''}${p.id===leader&&state.phase==='ROUND'?btn('PICK PROMPT','resend',{id:p.id,kind:'PICK'},'small ghost'):''}${p.pendingMove?btn('MOVE PROMPT','resend',{id:p.id,kind:'MOVE'},'small ghost'):''}${!p.removed&&p.id!==leader?btn('REMOVE','remove',{id:p.id},'small danger'):''}${p.removed?'':p.id===leader&&state.phase!=='LOBBY'?btn('REMOVE','remove',{id:p.id},'small danger'):''}</div>`:''}</div>`).join('')}</div>`;
 }
-function hostLobby(){const count=state.target;return `${panel(`<div class="row between"><div><div class="eyebrow">LIVE LOBBY</div><div class="code">${esc(state.code)}</div><p>${state.joined} of ${count} players joined</p><form id="count-form" class="inline-form"><label for="lobby-count">Adjust player count</label><input id="lobby-count" type="number" min="5" max="30" value="${count}" required><button class="secondary" type="submit">UPDATE COUNT</button></form><div class="row">${btn('COPY JOIN LINK','copy')}${btn('REFRESH','refresh')}</div></div><div>${qrSvg(joinLink())}</div></div><p class="help">Scan with the phone camera or enter the code. Every player must join from their own phone.</p>`)}
-  <div class="grid">${panel(`<h2>PLAYERS (${state.joined}/${count})</h2><div class="roster">${state.players.map(p=>`<div class="person"><b>${esc(p.name)}</b>${btn('REMOVE','remove',{id:p.id},'small danger')}</div>`).join('')}</div>`)}
+function hostLobby(){
+  const count=state.target,joined=state.joined,pct=count?Math.round(joined/count*100):0;
+  const minCount=Math.max(5,joined);
+  return `${panel(`<div class="eyebrow">LIVE LOBBY</div>
+  <div class="lobby-top"><div><div class="code">${esc(state.code)}</div>
+  <p class="muted">${joined} of ${count} players joined</p>
+  <div class="meter" role="progressbar" aria-valuenow="${joined}" aria-valuemax="${count}"><div style="width:${pct}%"></div></div></div>
+  <div class="lobby-qr">${qrSvg(joinLink())}</div></div>
+  <div class="row lobby-actions">${btn('COPY JOIN LINK','copy',{},'primary')}${btn('REFRESH','refresh',{},'ghost')}</div>
+  <p class="help">Scan with the phone camera or enter the code. Every player must join from their own phone.</p>
+  <details class="count-adjust"><summary>Adjust player count</summary>
+  <div class="stepper"><button class="secondary" data-action="count-step" data-data='{"delta":-1}' type="button" aria-label="Fewer players"${count<=minCount?' disabled':''}>−</button><b>${count}</b><button class="secondary" data-action="count-step" data-data='{"delta":1}' type="button" aria-label="More players"${count>=30?' disabled':''}>+</button></div>
+  <p class="help">For when someone bails before dealing. Can't go below the players already in.</p></details>`)}
+  <div class="grid">${panel(`<h2>PLAYERS (${joined}/${count})</h2><div class="roster">${state.players.map(p=>`<div class="person"><b>${esc(p.name)}</b>${btn('REMOVE','remove',{id:p.id},'small danger')}</div>`).join('')}</div>`)}
   ${panel(`<h2>BEFORE YOU START</h2><p class="help">Define physical Room A and Room B. Players will get randomly assigned after dealing. Nobody may communicate between rooms; no card trading.</p><p>First round: 3 min. Second: 2 min. Third: 1 min.</p><p><strong>${state.joined===count?'EVERYONE IS IN. READY TO DEAL.':`${count-state.joined} SEATS REMAIN.`}</strong></p>${btn('SHUFFLE & DEAL','start',{},'primary')}`)}</div>`;}
 function hostTravel(){return panel(`<div class="eyebrow">DECK DEALT • ROOMS ASSIGNED</div><h1>PLAYERS, GO TO YOUR ROOMS</h1><p>When both physical groups are ready, begin the 3-minute first round.</p>${btn('BEGIN ROUND 1','begin',{},'primary')}`);}
 function leaderName(room){return esc(person(state.leaders[room])?.name||'Not elected');}
@@ -161,10 +173,6 @@ root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false)
 root.addEventListener('submit',async e=>{
   e.preventDefault();if(waiting)return;
   // command() owns the busy flag. Pre-setting waiting would silently cancel this update.
-  if(e.target.id==='count-form'){
-    await command('set-count',{count:Number(e.target.querySelector('#lobby-count').value)});
-    return;
-  }
   waiting=true;
   try{
     if(e.target.id==='create-form'){
@@ -186,6 +194,7 @@ root.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b)return;
   const action=b.dataset.action;let data={};try{data=JSON.parse(b.dataset.data||'{}');}catch{}
   if(action==='landing-tab'){landingTab=data.tab==='join'?'join':'host';render();return;}
+  if(action==='count-step'){await command('set-count',{count:state.target+data.delta});return;}
   if(action==='copy'){try{await navigator.clipboard.writeText(joinLink());notify('JOIN LINK COPIED');}catch{notify(joinLink());}return;}
   if(action==='refresh'){await refresh();return;}
   if(action==='restore-host'){const s=read(keyHost);if(s)beginSession('host',s.code,s.token);return;}

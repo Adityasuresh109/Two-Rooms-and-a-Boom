@@ -56,10 +56,11 @@ with sync_playwright() as p:
  page.locator('#count').fill('6');page.get_by_role('button',name='CREATE GAME').click();page.locator('.qr svg rect').first.wait_for(timeout=10000)
  assert page.get_by_text('ABC234').count()>0
  assert page.locator('.qr svg rect').count()>50
- page.locator('#lobby-count').fill('5');page.get_by_role('button',name='UPDATE COUNT').click()
+ page.locator('.count-adjust summary').click()
+ page.get_by_role('button',name='Fewer players').click()
  page.wait_for_timeout(150)
  assert any(x.get('action')=='set-count' and x.get('payload')=={'count':5} for x in requests),requests
- print('PASS UPDATE COUNT sends request (previously blocked by busy flag)')
+ print('PASS stepper sends set-count (previously blocked by busy flag)')
  mobile=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
  mobile.add_init_script(JS_WS+f'window.__testHost={json.dumps(views["host"])};window.__testPlayer={json.dumps(views["player"])};')
  mobile.route('**/*',serve)

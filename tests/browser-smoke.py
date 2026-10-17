@@ -1,0 +1,71 @@
+"""Optional local Chromium smoke test (pip install playwright; Chromium must be installed).
+This intercepts only test transport; it is NOT a real Cloudflare WebSocket load test.
+"""
+from pathlib import Path
+import json
+from playwright.sync_api import sync_playwright
+from urllib.parse import urlparse
+ROOT=Path(__file__).resolve().parents[1]/'frontend'
+players=[{'id':f'p{i}', 'name':f'Guest {i}', 'room':('A' if i<4 else 'B'),'removed':False} for i in range(7)]
+views={
+ 'host': {'host':True,'code':'ABC234','target':7,'joined':7,'phase':'LOBBY','round':0,'until':None,'serverNow':1000,'timeLeft':None,'revision':1,'players':[dict(p) for p in players], 'leaders':{'A':None,'B':None},'locked':{'A':False,'B':False},'hostageCount':None,'voteCounts':{},'result':None},
+ 'player': {'host':False,'code':'ABC234','target':7,'joined':7,'phase':'ROUND','round':1,'until':2500000000000,'serverNow':1000,'timeLeft':None,'revision':1,'players':players[:4], 'leaders':{'A':'p1'},'locked':{'A':False},'hostageCount':1,'voteCounts':{'A':{}},'result':None,'me':{'id':'p0','name':'Guest 0','room':'A','card':'BOMBER','pendingMove':False,'promptNonce':0,'prediction':None,'leader':False,'locked':False,'vote':None}}
+}
+def serve(route):
+ url=urlparse(route.request.url)
+ if url.hostname=='localhost' and url.port==8711:
+  f=(ROOT/(url.path.strip('/') or 'index.html'))
+  if not f.is_file():return route.fulfill(status=404,body='not found')
+  if f.name=='config.js':return route.fulfill(status=200,content_type='text/javascript',body="window.GAME_API_ORIGIN='http://localhost:8712';")
+  media={'.js':'text/javascript','.html':'text/html','.css':'text/css'}
+  return route.fulfill(status=200,content_type=media.get(f.suffix,'text/plain'),body=f.read_bytes())
+ if url.hostname=='localhost' and url.port==8712:
+  data=json.loads(route.request.post_data or '{}')
+  if url.path=='/api/rooms': payload={'code':'ABC234','token':'host-secret'}
+  elif url.path.endswith('/join'):payload={'token':'player-secret','id':'p0','code':'ABC234'}
+  elif url.path.endswith('/state'):payload=views['host' if data.get('token')=='host-secret' else 'player']
+  elif url.path.endswith('/action'):payload={'ok':True,'revision':3}
+  else:payload={'error':'unknown'}
+  return route.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps(payload))
+ return route.abort()
+JS_WS="""
+class TestSocket {
+ static OPEN=1;
+ constructor(url){this.url=url;this.readyState=0;this.listeners={};setTimeout(()=>{this.readyState=1;this.emit('open',{});},0);}
+ addEventListener(event,handler){(this.listeners[event]??=[]).push(handler);}
+ emit(e,x){for(const f of this.listeners[e]??[])f(x);}
+ send(msg){const m=JSON.parse(msg);if(m.type==='hello')setTimeout(()=>{
+ const view=window.__testHost ? window.__testHost : window.__testPlayer;
+ this.emit('message',{data:JSON.stringify({type:'state',state:view})});},15);
+ else if(m.type==='ping')this.emit('message',{data:JSON.stringify({type:'pong',serverNow:Date.now()})});}
+ close(){this.readyState=3;this.emit('close',{});}
+}
+window.WebSocket=TestSocket;
+"""
+with sync_playwright() as p:
+ browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox'])
+ console=[]
+ host=browser.new_context(viewport={'width':1200,'height':850});host.add_init_script(JS_WS+f'window.__testHost={json.dumps(views["host"])};window.__testPlayer={json.dumps(views["player"])};')
+ host.route('**/*',serve)
+ page=host.new_page();page.on('console',lambda m:console.append(m.type+': '+m.text) if m.type in ('error','warning') else None)
+ page.goto('http://localhost:8711/');page.get_by_role('button',name='CREATE GAME').click();page.locator('.qr svg rect').first.wait_for(timeout=10000)
+ assert page.get_by_text('ABC234').count()>0
+ assert page.locator('.qr svg rect').count()>50
+ page.screenshot(path='/mnt/data/two-rooms-boom/host-lobby.png',full_page=True)
+ mobile=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+ mobile.add_init_script(JS_WS+f'window.__testHost={json.dumps(views["host"])};window.__testPlayer={json.dumps(views["player"])};')
+ mobile.route('**/*',serve)
+ pp=mobile.new_page();pp.on('console',lambda m:console.append(m.type+': '+m.text) if m.type in ('error','warning') else None)
+ pp.goto('http://localhost:8711/#join=ABC234');pp.locator('#player-name').fill('Guest 0');pp.get_by_role('button',name='JOIN ROOM').click()
+ pp.locator('#secret-card').wait_for(timeout=10000)
+ assert 'HOLD TO REVEAL' in pp.locator('#secret-card').inner_text()
+ pp.locator('#secret-card').dispatch_event('pointerdown')
+ assert 'BOMBER' in pp.locator('#secret-card').inner_text()
+ pp.locator('#secret-card').dispatch_event('pointerup')
+ assert 'HOLD TO REVEAL' in pp.locator('#secret-card').inner_text()
+ pp.screenshot(path='/mnt/data/two-rooms-boom/player-mobile.png',full_page=True)
+ pp.reload();pp.locator('#secret-card').wait_for(timeout=10000)
+ assert 'Guest 0' in pp.locator('body').inner_text()
+ assert not console,console
+ print('CHROMIUM UI PASS: host QR, player join, peek and hide, refresh reclaim, zero console warnings/errors')
+ browser.close()

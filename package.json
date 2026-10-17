@@ -1,0 +1,14 @@
+{
+  "name": "two-rooms-and-a-boom",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check worker/core.mjs && node --check worker/index.mjs && node --check frontend/app.js",
+    "test:all": "npm run check && npm test",
+    "dev": "wrangler dev",
+    "deploy:worker": "wrangler deploy"
+  },
+  "devDependencies": {"wrangler":"^4.45.0"}
+}

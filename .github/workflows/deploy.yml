@@ -1,0 +1,55 @@
+name: Test and deploy game
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: production
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run test:all
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy realtime backend
+        id: worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+      - name: Configure frontend with actual deployed Worker URL
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.deployment-url }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const url = process.env.WORKER_URL || '';
+          if (!/^https:\/\/[a-z0-9.\-]+\.workers\.dev\/?$/i.test(url)) {
+            console.error('Cloudflare did not return a valid workers.dev URL. Stopping rather than publishing a broken frontend:', url);
+            process.exit(1);
+          }
+          fs.writeFileSync('frontend/config.js', `window.GAME_API_ORIGIN = ${JSON.stringify(url.replace(/\/$/,''))};\n`);
+          NODE
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend
+      - uses: actions/deploy-pages@v4
+        id: pages

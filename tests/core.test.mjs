@@ -124,3 +124,18 @@ test('resend prompt increments nonce; host pause and resume freeze countdown',()
  act(s,host(s),'pause',{},3000);assert.equal(s.phase,'PAUSED');assert.equal(s.timeLeft,178000);
  assert.equal(expire(s,1000000),false);act(s,host(s),'resume',{},1000000);assert.equal(s.until,1178000);
 });
+
+test('removed Gambler does not block final reveal after all three exchanges',()=>{
+ const s=start(7),g=s.players.find(p=>p.card==='GAMBLER');
+ act(s,host(s),'remove',{id:g.id},1500);
+ for(let i=0;i<3;i++){const now=s.until;finishRound(s,now);}
+ assert.equal(s.phase,'FINAL_READY');
+ act(s,host(s),'reveal',{},s.lastChange+1);
+ assert.equal(s.phase,'REVEALED');
+});
+test('host can lower lobby count to remaining players and deal',()=>{
+ const s=setup(7);act(s,host(s),'remove',{id:s.players[0].id});
+ act(s,host(s),'set-count',{count:6});
+ act(s,host(s),'start');
+ assert.equal(s.players.length,6);assert.equal(s.phase,'TRAVEL');
+});

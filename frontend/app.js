@@ -9,6 +9,7 @@ let picked=new Set(),hostPicked={A:new Set(),B:new Set()},travelDismissed=false;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const person=(id)=>state?.players.find(p=>p.id===id);
 const codeFromHash=()=>{const m=location.hash.match(/(?:^#|[&?])join=([A-HJ-NP-Z2-9]{6})/i);return m?.[1]?.toUpperCase()||'';};
+let landingTab=codeFromHash()?'join':'host';
 function store(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
 function read(key){try{return JSON.parse(localStorage.getItem(key)||'null');}catch{return null;}}
 function forget(key){try{localStorage.removeItem(key);}catch{}}
@@ -91,18 +92,22 @@ function qrSvg(text){
     return `<div class="qr" role="img" aria-label="QR code for joining room ${esc(session.code)}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n+8} ${n+8}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="white"/><g fill="black">${cells.join('')}</g></svg></div>`;
   }catch{return '<p role="alert">QR unavailable. Use the room code or copy the link.</p>';}
 }
-function startPage(){const joining=codeFromHash();const remembered=joining?read(seatPrefix+joining):read(keyHost);
-  return `<div class="shell">${header()}<div class="hero spaced"><span class="eyebrow">A secret in every pocket. A fate in every room.</span><h1>TWO ROOMS.<br>TWO SIDES.<br><span class="redtext">ONE BOOM.</span></h1><p class="muted">A live phone-powered social deduction experience. Two real rooms, secret cards, three timed rounds and a final reveal.</p></div>
-    ${!configured?panel('<strong>Backend not configured.</strong><p>Realtime play is unavailable until the Cloudflare Worker is deployed. This is not a functional demo.</p>','warn'):''}
-    <div class="grid">${panel(`<h2>JOIN A GAME</h2><form id="join-form" class="stack"><label for="room-code">Room code</label><input id="room-code" name="room" value="${esc(joining)}" maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters" placeholder="6 LETTER CODE" required><label for="player-name">Your name</label><input id="player-name" name="name" maxlength="24" minlength="2" autocomplete="nickname" placeholder="Name on the roster" required><button class="primary" type="submit">JOIN ROOM</button></form>${remembered?.role==='player'?`<div class="spaced">${btn('RECLAIM MY SEAT','restore-player',{code:joining},'ghost')}</div>`:''}`)}
-    ${panel(`<h2>HOST A PARTY</h2><form id="create-form" class="stack"><label for="count">Player count (host does not play)</label><input id="count" type="number" min="6" max="30" value="25" required><button class="primary" type="submit">CREATE GAME</button></form>${read(keyHost)?`<div class="spaced">${btn('RESUME HOST SESSION','restore-host',{},'ghost')}</div>`:''}<p class="help">Use your laptop or a TV. Players use Safari or Chrome — no install.</p>`)}</div>${footer()}</div>`;
+function startPage(){
+ const joining=codeFromHash(),remembered=joining?read(seatPrefix+joining):null;
+ const hostTab=landingTab==='host';
+ const content=hostTab?`<h2>HOST A PARTY</h2><form id="create-form" class="stack"><label for="count">Player count (host doesn't play)</label><input id="count" type="number" min="6" max="30" value="25" required><button class="primary" type="submit">CREATE GAME</button></form>${read(keyHost)?`<div class="spaced">${btn('RESUME LAST SESSION','restore-host',{},'ghost')}</div>`:''}<p class="help">Open this on your laptop or TV. Players join from their phones — nothing to install.</p>`:
+ `<h2>JOIN THE PARTY</h2><form id="join-form" class="stack"><label for="room-code">Room code</label><input id="room-code" name="room" value="${esc(joining)}" maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters" required><label for="player-name">Your name</label><input id="player-name" name="name" maxlength="24" minlength="2" required><button class="primary" type="submit">JOIN ROOM</button></form>${remembered?.token?`<div class="spaced">${btn('RECLAIM MY SEAT','restore-player',{code:joining},'ghost')}</div>`:''}<p class="help">Fastest way in: scan the QR code on the host's screen.</p>`;
+ return `<div class="shell landing"><header class="top"><div class="brand">AD ARCADE</div></header><section class="landing-hero"><h1>TWO ROOMS<br><span class="gold">&amp;</span> A BOOM</h1><p>Two teams. Two rooms. Three rounds. One secret in every pocket — and one boom at the end.</p><div class="team-split"><span></span><span></span></div></section>
+ <div class="landing-form"><div class="landing-tabs" role="tablist"><button type="button" role="tab" aria-selected="${hostTab}" class="${hostTab?'active':''}" data-action="landing-tab" data-data='{"tab":"host"}'>I'M HOSTING</button><button type="button" role="tab" aria-selected="${!hostTab}" class="${!hostTab?'active':''}" data-action="landing-tab" data-data='{"tab":"join"}'>I'M JOINING</button></div>
+ ${!configured?panel('<strong>Backend not configured.</strong><p>Realtime play is unavailable until the Cloudflare Worker is deployed.</p>','warn'):''}${panel(content)}</div>
+ <section class="how-strip">${['Split into two physical rooms','Everyone gets a secret card','Three timed rounds, hostages swap','Bomber meets President? Boom.'].map((x,i)=>`<div><b>${i+1}</b><span>${x}</span></div>`).join('')}</section>${footer()}</div>`;
 }
-function footer(){return `<footer>Basic game only · 6–30 players · three rounds · Original tabletop game by Alan Gerding and Sean McCoy. Unofficial fan-made digital adaptation.</footer>`;}
+function footer(){return `<footer>Unofficial fan adaptation of the tabletop game by Alan Gerding &amp; Sean McCoy.</footer>`;}
 function nameList(room,hostControls=false){
   const list=state.players.filter(p=>p.room===room);const leader=state.leaders[room];
   return `<div class="roster">${list.map(p=>`<div class="person ${leader===p.id?'leader':''} ${p.removed?'removed':''}"><div><b>${esc(p.name)}</b> ${leader===p.id?'<span class="tag">★ LEADER</span>':''} ${p.removed?'<span class="tag">REMOVED</span>':''}${state.phase==='REVEALED'?`<p class="tag">${esc(p.card)}</p>`:''}</div>${hostControls?`<div class="row">${['ROUND','LOCKING'].includes(state.phase)&&!p.removed&& !state.locked[room]?btn('LEADER','host-leader',{room,id:p.id},'small secondary'):''}${p.id===leader&&state.phase==='ROUND'?btn('PICK PROMPT','resend',{id:p.id,kind:'PICK'},'small ghost'):''}${p.pendingMove?btn('MOVE PROMPT','resend',{id:p.id,kind:'MOVE'},'small ghost'):''}${!p.removed&&p.id!==leader?btn('REMOVE','remove',{id:p.id},'small danger'):''}${p.removed?'':p.id===leader&&state.phase!=='LOBBY'?btn('REMOVE','remove',{id:p.id},'small danger'):''}</div>`:''}</div>`).join('')}</div>`;
 }
-function hostLobby(){const count=state.target;return `${panel(`<div class="row between"><div><div class="eyebrow">LIVE LOBBY</div><div class="code">${esc(state.code)}</div><p>${state.joined} of ${count} players joined</p><div class="row">${btn('COPY JOIN LINK','copy')}${btn('REFRESH','refresh')}</div></div><div>${qrSvg(joinLink())}</div></div><p class="help">Scan with the phone camera or enter the code. Every player must join from their own phone.</p>`)}
+function hostLobby(){const count=state.target;return `${panel(`<div class="row between"><div><div class="eyebrow">LIVE LOBBY</div><div class="code">${esc(state.code)}</div><p>${state.joined} of ${count} players joined</p><form id="count-form" class="inline-form"><label for="lobby-count">Adjust player count</label><input id="lobby-count" type="number" min="6" max="30" value="${count}" required><button class="secondary" type="submit">UPDATE COUNT</button></form><div class="row">${btn('COPY JOIN LINK','copy')}${btn('REFRESH','refresh')}</div></div><div>${qrSvg(joinLink())}</div></div><p class="help">Scan with the phone camera or enter the code. Every player must join from their own phone.</p>`)}
   <div class="grid">${panel(`<h2>PLAYERS (${state.joined}/${count})</h2><div class="roster">${state.players.map(p=>`<div class="person"><b>${esc(p.name)}</b>${btn('REMOVE','remove',{id:p.id},'small danger')}</div>`).join('')}</div>`)}
   ${panel(`<h2>BEFORE YOU START</h2><p class="help">Define physical Room A and Room B. Players will get randomly assigned after dealing. Nobody may communicate between rooms; no card trading.</p><p>First round: 3 min. Second: 2 min. Third: 1 min.</p><p><strong>${state.joined===count?'EVERYONE IS IN. READY TO DEAL.':`${count-state.joined} SEATS REMAIN.`}</strong></p>${btn('SHUFFLE & DEAL','start',{},'primary')}`)}</div>`;}
 function hostTravel(){return panel(`<div class="eyebrow">DECK DEALT • ROOMS ASSIGNED</div><h1>PLAYERS, GO TO YOUR ROOMS</h1><p>When both physical groups are ready, begin the 3-minute first round.</p>${btn('BEGIN ROUND 1','begin',{},'primary')}`);}
@@ -113,7 +118,7 @@ function hostRoomPanel(room){const names=state.players.filter(p=>p.room===room&&
 }
 function hostGame(){let title=state.phase==='ROUND'?'ROUND IN PROGRESS':state.phase==='PAUSED'?'ROUND PAUSED':state.phase==='LOCKING'?'TIME UP · HOSTAGE LOCK':'HOSTAGE EXCHANGE';
   const active=['ROUND','PAUSED','LOCKING','EXCHANGE'].includes(state.phase);
-  if(active)return `${panel(`<div class="row between"><div><div class="eyebrow">MISSION ${state.round} / 3 · LIVE CONTROL</div><h1>${title}</h1><p class="help">Hostages this round: ${state.hostageCount} from EACH room. Leader cannot be a hostage.</p></div><div class="center"><div class="timer" data-countdown>${timerText()}</div><div class="tag">${state.phase==='EXCHANGE'?'WAITING FOR MOVEMENT':'HOST TIMER'}</div></div></div><div class="row">${state.phase==='ROUND'?`${btn('PAUSE','pause')}${btn('FORCE END ROUND','force-advance',{},'danger')}`:''}${state.phase==='PAUSED'?btn('RESUME','resume',{},'primary'):''}${state.phase==='EXCHANGE'?btn('CONFIRM EVERYONE MOVED · CONTINUE','advance',{},'primary'):''}${btn('SYNC SCREENS','refresh')}</div>${state.phase==='LOCKING'?`<p class="warn">Timer expired. Leader picks are closed. Select missing hostages below, or assign a missing leader first. No selections are visible until both rooms are locked.</p>`:''}${state.phase==='EXCHANGE'?`<p class="check">Both rooms locked. Confirm physical arrival before starting the next round. The timer will not restart without host confirmation.</p>`:''}`)}<div class="grid">${hostRoomPanel('A')}${hostRoomPanel('B')}</div>`;
+  if(active)return `${panel(`<div class="row between"><div><div class="eyebrow">MISSION ${state.round} / 3 · LIVE CONTROL</div><h1>${title}</h1><p class="help">Hostages this round: ${state.hostageCount} from EACH room. Leader cannot be a hostage.</p></div><div class="center"><div class="timer" data-countdown>${timerText()}</div><div class="tag">${state.phase==='EXCHANGE'?'WAITING FOR PHYSICAL MOVEMENT':'HOST TIMER'}</div></div></div><div class="row">${state.phase==='ROUND'?`${btn('PAUSE','pause')}${btn('FORCE END ROUND','force-advance',{},'danger')}`:''}${state.phase==='PAUSED'?btn('RESUME','resume',{},'primary'):''}${state.phase==='EXCHANGE'?btn('CONFIRM EVERYONE MOVED · CONTINUE','advance',{},'primary'):''}${btn('SYNC SCREENS','refresh')}</div>${state.phase==='LOCKING'?`<p class="warn">Timer expired. Leader picks are closed. Select missing hostages below, or assign a missing leader first. No selections are visible until both rooms are locked.</p>`:''}${state.phase==='EXCHANGE'?`<p class="check">Both rooms locked. Confirm players have physically arrived before starting the next round. The timer will not restart without host confirmation.</p>`:''}`)}<div class="grid">${hostRoomPanel('A')}${hostRoomPanel('B')}</div>`;
   if(state.phase==='PREDICTION')return panel(`<h1>GAMBLER'S CALL</h1><p>Wait for the Gambler to lock their prediction privately. Do not reveal the teams yet.</p>${btn('CHECK GAMBLER STATUS','refresh')}`);
   if(state.phase==='FINAL_READY')return panel(`<h1>IT ALL COMES DOWN TO THIS.</h1><p>Final exchange complete. Gather players without mixing room identities. When everyone is ready, reveal simultaneously.</p>${btn('THE REVEAL','reveal',{},'primary')}`);
   if(state.phase==='REVEALED')return results();
@@ -156,6 +161,7 @@ root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false)
 root.addEventListener('submit',async e=>{
   e.preventDefault();if(waiting)return;waiting=true;
   try{
+    if(e.target.id==='count-form'){await command('set-count',{count:Number(e.target.querySelector('#lobby-count').value)});return;}
     if(e.target.id==='create-form'){
       const count=Number(e.target.querySelector('#count').value),r=await request('/api/rooms',{playerCount:count});
       if(!store(keyHost,{role:'host',code:r.code,token:r.token}))notify('Storage blocked: host refresh cannot recover this room on this browser.');
@@ -167,13 +173,14 @@ root.addEventListener('submit',async e=>{
       if(saved?.token){beginSession('player',code,saved.token);return;}
       const r=await request(`/api/rooms/${code}/join`,{name});
       if(!store(seatPrefix+code,{role:'player',code,token:r.token}))notify('Storage blocked: refreshing might lose your seat. Enable browser storage before playing.');
-      beginSession('player',code,r.token);
+      history.replaceState(null,'','#join='+code);beginSession('player',code,r.token);
     }
   }catch(err){notify(err.message);offline(err.message);}finally{waiting=false;}
 });
 root.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b)return;
   const action=b.dataset.action;let data={};try{data=JSON.parse(b.dataset.data||'{}');}catch{}
+  if(action==='landing-tab'){landingTab=data.tab==='join'?'join':'host';render();return;}
   if(action==='copy'){try{await navigator.clipboard.writeText(joinLink());notify('JOIN LINK COPIED');}catch{notify(joinLink());}return;}
   if(action==='refresh'){await refresh();return;}
   if(action==='restore-host'){const s=read(keyHost);if(s)beginSession('host',s.code,s.token);return;}
@@ -185,12 +192,12 @@ root.addEventListener('click',async e=>{
   if(action==='host-pick'){if(hostPicked[data.room].size!==state.hostageCount){notify(`Choose exactly ${state.hostageCount} hostages.`);return;}data.ids=[...hostPicked[data.room]];}
   if(['remove','force-advance','advance','reveal'].includes(action)){
     const m={remove:'Remove this player? After dealing, the seat remains reserved for game fairness.',
-      'force-advance':'Force end this round now? Missing selections will need host intervention.',advance:'Confirm all hostages reached their destination rooms? This starts the next round or final reveal preparation.',reveal:'Flip every card for every player right now?'};
+      'force-advance':'Force end this round now? Missing selections will need host intervention.',advance:'Confirm that all hostages reached their destination rooms? This will start the next round or final reveal preparation.',reveal:'Flip every card for every player right now?'};
     if(!window.confirm(m[action]))return;
   }
   await command(action,data);
 });
-window.addEventListener('hashchange',()=>{if(!session)render();});
+window.addEventListener('hashchange',()=>{if(!session){if(codeFromHash())landingTab='join';render();}});
 const joining=codeFromHash();const recovered=joining?read(seatPrefix+joining):(!joining?read(keyHost):null);
 if(recovered?.token)beginSession(recovered.role,recovered.code,recovered.token);else render();
 if(!configured)offline('This deployment has no configured realtime backend. Host and players cannot connect until it is configured.');

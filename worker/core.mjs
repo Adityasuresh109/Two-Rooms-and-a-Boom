@@ -3,7 +3,7 @@ export const ROUND_SECONDS = [180, 120, 60];
 export const MIN_PLAYERS = 6;
 export const MAX_PLAYERS = 30;
 export const ROOMS = ['A', 'B'];
-export const ACTIONS = Object.freeze(['join','start','begin','nominate','challenge','abdicate','accept','decline','pick','host-pick','force-advance','advance','ack-move','prediction','reveal','remove','host-leader','resend','pause','resume']);
+export const ACTIONS = Object.freeze(['join','start','begin','nominate','challenge','abdicate','accept','decline','pick','host-pick','force-advance','advance','ack-move','prediction','reveal','remove','host-leader','resend','pause','resume','set-count']);
 export class GameError extends Error { constructor(message, status = 400) { super(message); this.name = 'GameError'; this.status = status; } }
 const fail = (message, status) => { throw new GameError(message, status); };
 export const safeName = name => typeof name === 'string' ? name.trim().replace(/\s+/g, ' ').slice(0,24) : '';
@@ -64,7 +64,7 @@ function setLeader(s,room,targetId) {
 function lock(s,room,ids,actor) {
   if(s.locks[room]) fail('Room already locked.');
   const count=hostageCount(s.playerCount,s.round), pool=roomPlayers(s,room);
-  if(pool.filter(p=>!p.removed&&p.id!==s.leaders[room]).length<count)fail('Not enough active players for hostage selection. Host must resolve abandoned seats.');
+  if(pool.filter(p=>!p.removed&&p.id!==s.leaders[room]).length<count)fail('Not enough active players for hostage selection. Host must resolve the abandoned seats.');
   if(!Array.isArray(ids) || ids.length!==count || new Set(ids).size!==ids.length) fail(`Select exactly ${count} different hostage(s).`);
   if(ids.some(id=>!pool.some(p=>p.id===id && !p.removed) || id===s.leaders[room])) fail('Each hostage must be in the room and cannot be its leader.');
   s.locks[room]={ids:[...ids],by:actor};
@@ -80,15 +80,18 @@ function exchange(s,now) {
 }
 export function expire(s,now) {
   if(s.phase==='ROUND' && now>=s.until) { s.phase='LOCKING';s.until=null;s.timeLeft=null;s.events.push({type:'TIME_UP',round:s.round,at:now}); exchange(s,now); return true; }
-  if(s.phase==='EXCHANGE' && now>=s.until){s.until=null;s.events.push({type:'MOVEMENT_READY',round:s.round,at:now});return true;}
+  if(s.phase==='EXCHANGE' && now>=s.until){
+    // Never start another round until the host confirms physical movement.
+    s.until=null;s.events.push({type:'MOVEMENT_READY',round:s.round,at:now});return true;
+  }
   return false;
 }
 export function completeMovement(s,now){
   if(s.phase!=='EXCHANGE') fail('No exchange to complete.');
-  if(s.players.some(p=>p.pendingMove&&!p.removed)) fail('Wait for player confirmations or use host override.');
-  {
+  if(s.players.some(p=>p.pendingMove&&!p.removed)) fail('Wait for players to confirm their moves, or use host override.');
+  { 
     s.locks={A:null,B:null}; s.votes={A:{},B:{}};s.offers={A:null,B:null};s.cannotReturn={A:null,B:null};
-    if(s.round===2){s.phase=s.players.some(p=>p.card==='GAMBLER')?'PREDICTION':'FINAL_READY';s.until=null;}
+    if(s.round===2){s.phase=s.players.some(p=>p.card==='GAMBLER'&&!p.removed)?'PREDICTION':'FINAL_READY';s.until=null;}
     else{ s.round++;s.phase='ROUND';s.until=now+ROUND_SECONDS[s.round]*1000; }
     s.events.push({type:'NEXT',round:s.round,at:now});return true;
   }
@@ -99,6 +102,13 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
   const oldPhase=s.phase, priorRevision=s.revision;
   switch(action) {
     case 'join': { fail('Join via the room join endpoint.',405); break; }
+    case 'set-count': {
+      host(auth);if(s.phase!=='LOBBY')fail('Player count can only change in the lobby.');
+      const count=payload.count;
+      if(!Number.isInteger(count)||count<6||count>30)fail('Player count must be 6–30.');
+      if(count<s.players.length)fail('Count cannot be below joined players.');
+      s.playerCount=count;break;
+    }
     case 'start': {
       host(auth); if(s.phase!=='LOBBY') fail('This game has started.');
       if(s.players.length!==s.playerCount) fail(`Waiting for ${s.playerCount-s.players.length} player(s).`);
@@ -158,13 +168,16 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
     }
     case 'reveal': {
       host(auth);if(s.phase!=='FINAL_READY' && s.phase!=='PREDICTION')fail('Finish the final exchange first.');
-      if(s.phase==='PREDICTION' && !s.players.some(p=>p.card==='GAMBLER' && p.prediction))fail('Wait for the Gambler to lock a prediction.');
+      if(s.phase==='PREDICTION' && !s.players.some(p=>p.card==='GAMBLER' && !p.removed && p.prediction))fail('Wait for the Gambler to lock a prediction.');
       s.result=resultOf(s);s.phase='REVEALED';s.revealed=true;s.until=null;break;
     }
     case 'remove': {
       host(auth);const p=s.players.find(p=>p.id===payload.id&&!p.removed);if(!p)fail('Player not found.');
       if(s.phase==='LOBBY')s.players=s.players.filter(x=>x.id!==p.id);
-      else {p.removed=true;p.token=null;p.pendingMove=false; /* Preserve original card and seat for verdict. */ if(p.room&&s.leaders[p.room]===p.id){s.leaders[p.room]=null;clearPolitics(s,p.room);} if(p.room){delete s.votes[p.room][p.id];for(const voter of Object.keys(s.votes[p.room]))if(s.votes[p.room][voter]===p.id)delete s.votes[p.room][voter];} }
+      else {p.removed=true;p.token=null;p.pendingMove=false; /* Keep card and original seat for fair verdict. */
+        if(p.room && s.leaders[p.room]===p.id){s.leaders[p.room]=null;clearPolitics(s,p.room);}
+        if(p.room){delete s.votes[p.room][p.id];for(const voter of Object.keys(s.votes[p.room]))if(s.votes[p.room][voter]===p.id)delete s.votes[p.room][voter];}
+        if(s.phase==='LOCKING' && p.room && !s.locks[p.room])s.events.push({type:'HOST_RECOVERY_NEEDED',room:p.room,at:now}); }
       break;
     }
     case 'host-leader': {

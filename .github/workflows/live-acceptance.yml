@@ -1,0 +1,18 @@
+name: Live multiplayer acceptance
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tests/live-acceptance.mjs'
+      - '.github/workflows/live-acceptance.yml'
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run real Worker games and 25 WebSockets
+        run: node tests/live-acceptance.mjs

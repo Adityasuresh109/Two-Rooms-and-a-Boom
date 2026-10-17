@@ -11,6 +11,7 @@ const person=(id)=>state?.players.find(p=>p.id===id);
 const codeFromHash=()=>{const m=location.hash.match(/(?:^#|[&?])join=([A-HJ-NP-Z2-9]{6})/i);return m?.[1]?.toUpperCase()||'';};
 let landingTab=codeFromHash()?'join':'host';
 let rulesOpen=false;
+let countAdjustOpen=false;
 function rulesContent(){return `<div class="rules-card" role="dialog" aria-modal="true" aria-label="How to play">
 <button class="ghost small rules-x" data-action="rules-x" type="button" aria-label="Close">✕</button>
 <div class="eyebrow">HOW TO PLAY</div><h2>Two Rooms &amp; a Boom</h2>
@@ -85,7 +86,7 @@ async function command(action,payload={}){
   }catch(e){notify(e.message);if(/timed out|Failed to fetch|NetworkError|backend/i.test(e.message))offline(e.message);}finally{waiting=false;}
 }
 async function refresh(){if(!session)return;try{update(await request(`/api/rooms/${session.code}/state`,{token:session.token}));}catch(e){offline(e.message);}}
-function beginSession(role,code,token){session={role,code,token};state=null;picked=new Set();hostPicked={A:new Set(),B:new Set()};render();connect();}
+function beginSession(role,code,token){session={role,code,token};state=null;rulesOpen=false;countAdjustOpen=false;picked=new Set();hostPicked={A:new Set(),B:new Set()};render();connect();}
 function timerText(){if(!state)return '--:--';const until=state.phase==='PAUSED'?(state.timeLeft||0):state.until?Math.max(0,state.until-(Date.now()-clockOffset)):0;
   const secs=Math.ceil(until/1000);return `${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}`;}
 function tick(){for(const el of root.querySelectorAll('[data-countdown]'))el.textContent=timerText();}
@@ -98,7 +99,7 @@ setInterval(()=>{
 document.getElementById('retry').addEventListener('click',()=>{attempt=0;connect();});
 const btn=(label,act,payload={},cls='secondary')=>`<button class="${cls}" data-action="${esc(act)}" data-data="${esc(JSON.stringify(payload))}" type="button">${esc(label)}</button>`;
 const panel=(content,cls='')=>`<section class="panel ${cls}">${content}</section>`;
-function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row"><span class="pill">${esc(session.code)}</span><span class="pill">${session.role==='host'?'HOST':esc(state?.me?.name||'PLAYER')}</span>${btn('?','rules-open',{},'ghost small rules-btn')}</div>`:''}</header>`;}
+function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row"><span class="pill">${esc(session.code)}</span><span class="pill">${session.role==='host'?'HOST':esc(state?.me?.name||'PLAYER')}</span>${btn('?','rules-open',{},'ghost small rules-btn')}${btn('LEAVE','leave',{},'ghost small')}</div>`:''}</header>`;}
 function qrSvg(text){
   try{const q=window.makeQR(text),n=q.getModuleCount(),cells=[];
     for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(q.isDark(y,x))cells.push(`<rect x="${x+4}" y="${y+4}" width="1" height="1"/>`);
@@ -130,7 +131,7 @@ function hostLobby(){
   <div class="lobby-qr">${qrSvg(joinLink())}</div></div>
   <div class="row lobby-actions">${btn('COPY JOIN LINK','copy',{},'primary')}${btn('REFRESH','refresh',{},'ghost')}</div>
   <p class="help">Scan with the phone camera or enter the code. Every player must join from their own phone.</p>
-  <details class="count-adjust"><summary>Adjust player count</summary>
+  <details class="count-adjust"${countAdjustOpen?' open':''}><summary>Adjust player count</summary>
   <div class="stepper"><button class="secondary" data-action="count-step" data-data='{"delta":-1}' type="button" aria-label="Fewer players"${count<=minCount?' disabled':''}>−</button><b>${count}</b><button class="secondary" data-action="count-step" data-data='{"delta":1}' type="button" aria-label="More players"${count>=30?' disabled':''}>+</button></div>
   <p class="help">For when someone bails before dealing. Can't go below the players already in.</p></details>`)}
   <div class="grid">${panel(`<h2>PLAYERS (${joined}/${count})</h2><div class="roster">${state.players.map(p=>`<div class="person"><b>${esc(p.name)}</b>${btn('REMOVE','remove',{id:p.id},'small danger')}</div>`).join('')}</div>`)}
@@ -183,6 +184,7 @@ function render(){root.innerHTML=(!session?startPage():!state?`<div class="shell
 root.addEventListener('pointerdown',e=>{if(e.target.closest('#secret-card')){e.preventDefault();peekCard(true);}});
 root.addEventListener('keydown',e=>{if(e.target.id==='secret-card'&&(e.key===' '||e.key==='Enter')){e.preventDefault();peekCard(true);}});
 root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false);if(e.key==='Escape'&&rulesOpen){rulesOpen=false;render();}});
+root.addEventListener('toggle',e=>{if(e.target.classList&&e.target.classList.contains('count-adjust'))countAdjustOpen=e.target.open;},true);
 root.addEventListener('submit',async e=>{
   e.preventDefault();if(waiting)return;
   // command() owns the busy flag. Pre-setting waiting would silently cancel this update.
@@ -211,6 +213,10 @@ root.addEventListener('click',async e=>{
   if(action==='rules-open'){rulesOpen=true;render();return;}
   if(action==='rules-x'){rulesOpen=false;render();return;}
   if(action==='rules-close'){if(e.target.closest('.rules-card'))return;rulesOpen=false;render();return;}
+  if(action==='leave'){
+    if(state&&state.phase!=='LOBBY'&&!window.confirm(session.role==='host'?'Leave this game? The room stays live — resume it any time from the landing page.':'Leave this game? Your seat stays reserved — rejoin from the link to reclaim it.'))return;
+    stopConnection();session=null;state=null;rulesOpen=false;countAdjustOpen=false;picked=new Set();hostPicked={A:new Set(),B:new Set()};render();return;
+  }
   if(action==='copy'){try{await navigator.clipboard.writeText(joinLink());notify('JOIN LINK COPIED');}catch{notify(joinLink());}return;}
   if(action==='refresh'){await refresh();return;}
   if(action==='restore-host'){const s=read(keyHost);if(s)beginSession('host',s.code,s.token);return;}

@@ -1,12 +1,13 @@
 name: Live multiplayer acceptance
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'tests/live-acceptance.mjs'
-      - '.github/workflows/live-acceptance.yml'
+  workflow_run:
+    workflows: ['Test and deploy game']
+    types: [completed]
+    branches: [main]
 jobs:
   acceptance:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:

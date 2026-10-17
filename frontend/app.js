@@ -99,7 +99,7 @@ setInterval(()=>{
 document.getElementById('retry').addEventListener('click',()=>{attempt=0;connect();});
 const btn=(label,act,payload={},cls='secondary')=>`<button class="${cls}" data-action="${esc(act)}" data-data="${esc(JSON.stringify(payload))}" type="button">${esc(label)}</button>`;
 const panel=(content,cls='')=>`<section class="panel ${cls}">${content}</section>`;
-function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row"><span class="pill">${esc(session.code)}</span><span class="pill">${session.role==='host'?'HOST':esc(state?.me?.name||'PLAYER')}</span>${btn('?','rules-open',{},'ghost small rules-btn')}${btn('LEAVE','leave',{},'ghost small')}</div>`:''}</header>`;}
+function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row header-actions">${btn('?','rules-open',{},'ghost small rules-btn')}<button class="ghost small rules-btn" data-action="leave" data-data="{}" type="button" title="Leave game" aria-label="Leave game">⏻</button></div>`:''}</header>`;}
 function qrSvg(text){
   try{const q=window.makeQR(text),n=q.getModuleCount(),cells=[];
     for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(q.isDark(y,x))cells.push(`<rect x="${x+4}" y="${y+4}" width="1" height="1"/>`);

@@ -159,9 +159,14 @@ root.addEventListener('pointerdown',e=>{if(e.target.closest('#secret-card')){e.p
 root.addEventListener('keydown',e=>{if(e.target.id==='secret-card'&&(e.key===' '||e.key==='Enter')){e.preventDefault();peekCard(true);}});
 root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false);});
 root.addEventListener('submit',async e=>{
-  e.preventDefault();if(waiting)return;waiting=true;
+  e.preventDefault();if(waiting)return;
+  // command() owns the busy flag. Pre-setting waiting would silently cancel this update.
+  if(e.target.id==='count-form'){
+    await command('set-count',{count:Number(e.target.querySelector('#lobby-count').value)});
+    return;
+  }
+  waiting=true;
   try{
-    if(e.target.id==='count-form'){await command('set-count',{count:Number(e.target.querySelector('#lobby-count').value)});return;}
     if(e.target.id==='create-form'){
       const count=Number(e.target.querySelector('#count').value),r=await request('/api/rooms',{playerCount:count});
       if(!store(keyHost,{role:'host',code:r.code,token:r.token}))notify('Storage blocked: host refresh cannot recover this room on this browser.');

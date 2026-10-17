@@ -16,7 +16,7 @@ function finishRound(s,now){if(!s.locks.A)pick(s,'A',now-1000);if(!s.locks.B)pic
 test('deck composition and official chart for all 6-30 players',()=>{
  for(let n=6;n<=30;n++){const deck=createDeck(n);assert.equal(deck.length,n);assert.equal(deck.filter(x=>x==='PRESIDENT').length,1);assert.equal(deck.filter(x=>x==='BOMBER').length,1);assert.equal(deck.filter(x=>x==='GAMBLER').length,n%2);assert.equal(deck.filter(x=>x==='BLUE').length,deck.filter(x=>x==='RED').length);}
  for(const [n,chart] of [[6,[1,1,1]],[10,[1,1,1]],[11,[2,1,1]],[21,[2,1,1]],[22,[3,2,1]],[25,[3,2,1]],[30,[3,2,1]]])assert.deepEqual([0,1,2].map(r=>hostageCount(n,r)),chart);
- for(const n of [0,5,31,30.5])assert.throws(()=>createDeck(n),GameError);
+ for(const n of [0,4,31,30.5])assert.throws(()=>createDeck(n),GameError);
 });
 test('25 player deal, even-as-possible split, secret cards never broadcast',()=>{
  const s=start(25);assert.equal(s.phase,'ROUND');assert.deepEqual([room(s,'A').length,room(s,'B').length],[13,12]);
@@ -138,4 +138,28 @@ test('host can lower lobby count to remaining players and deal',()=>{
  act(s,host(s),'set-count',{count:6});
  act(s,host(s),'start');
  assert.equal(s.players.length,6);assert.equal(s.phase,'TRAVEL');
+});
+
+test('6-player lobby shrinks to 5 and completes three rounds with Gambler verdict',()=>{
+ const s=setup(6);
+ act(s,host(s),'remove',{id:s.players[0].id});
+ act(s,host(s),'set-count',{count:5});
+ assert.equal(s.playerCount,5);
+ act(s,host(s),'start');
+ assert.deepEqual(s.players.map(p=>p.card).sort(),['PRESIDENT','BOMBER','RED','BLUE','GAMBLER'].sort());
+ assert.deepEqual([room(s,'A').length,room(s,'B').length],[3,2]);
+ act(s,host(s),'begin');
+ for(let i=0;i<3;i++)finishRound(s,s.until);
+ assert.equal(s.phase,'PREDICTION');
+ const gambler=s.players.find(p=>p.card==='GAMBLER');
+ const prediction=winner(s);
+ act(s,who(s,gambler),'prediction',{team:prediction},s.lastChange+1);
+ act(s,host(s),'reveal',{},s.lastChange+1);
+ assert.equal(s.phase,'REVEALED');
+ assert.equal(s.result.winningTeam,prediction);
+ assert.equal(s.result.gambler.won,true);
+});
+test('new room still requires at least 6 players',()=>{
+ assert.throws(()=>makeRoom('ABC234',5,'host',0),/6–30/);
+ assert.equal(createDeck(5).length,5);
 });

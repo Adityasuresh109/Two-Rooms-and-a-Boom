@@ -9,7 +9,7 @@ const fail = (message, status) => { throw new GameError(message, status); };
 export const safeName = name => typeof name === 'string' ? name.trim().replace(/\s+/g, ' ').slice(0,24) : '';
 export const hostageCount = (players, round) => players >= 22 ? [3,2,1][round] : players >= 11 ? [2,1,1][round] : 1;
 export function createDeck(count) {
-  if (!Number.isInteger(count) || count < MIN_PLAYERS || count > MAX_PLAYERS) fail('Player count must be 6–30.');
+  if (!Number.isInteger(count) || count < 5 || count > MAX_PLAYERS) fail('Player count must be 5–30.');
   const ordinaryPerSide = Math.floor((count - 2) / 2);
   const deck = ['PRESIDENT','BOMBER', ...Array(ordinaryPerSide).fill('BLUE'), ...Array(ordinaryPerSide).fill('RED')];
   if (count % 2) deck.push('GAMBLER');
@@ -22,6 +22,7 @@ export function shuffle(items, rand) {
   return a;
 }
 export function makeRoom(code, playerCount, hostToken, now) {
+  if (!Number.isInteger(playerCount) || playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) fail('Player count must be 6–30.');
   createDeck(playerCount);
   return {code, playerCount, hostToken, players:[], phase:'LOBBY', round:-1, until:null, timeLeft:null, leaders:{A:null,B:null}, offers:{A:null,B:null}, cannotReturn:{A:null,B:null}, votes:{A:{},B:{}}, locks:{A:null,B:null}, revealed:false, result:null, exchange:{A:[],B:[]}, events:[], createdAt:now, revision:0, seen:{}};
 }
@@ -105,8 +106,7 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
     case 'set-count': {
       host(auth);if(s.phase!=='LOBBY')fail('Player count can only change in the lobby.');
       const count=payload.count;
-      if(!Number.isInteger(count)||count<6||count>30)fail('Player count must be 6–30.');
-      if(count<s.players.length)fail('Count cannot be below joined players.');
+      if(!Number.isInteger(count)||count<Math.max(5,s.players.length)||count>30)fail('Adjusted player count must be between the joined count (at least 5) and 30.');
       s.playerCount=count;break;
     }
     case 'start': {

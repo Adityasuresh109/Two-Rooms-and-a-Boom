@@ -19,6 +19,13 @@ jobs:
         with:
           node-version: '22'
       - run: npm run test:all
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.56.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Browser regression gate (must pass before deployment)
+        run: python tests/browser-smoke.py
   deploy:
     needs: verify
     runs-on: ubuntu-latest

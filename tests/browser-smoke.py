@@ -70,7 +70,7 @@ with sync_playwright() as p:
  pp.locator('#secret-card').dispatch_event('pointerdown')
  assert 'BOMBER' in pp.locator('#secret-card').inner_text()
  pp.locator('#secret-card').dispatch_event('pointerup')
- assert 'HOLD TO REVEAL' in pp.locator('#secret-card').inner_text()
+ assert 'HOLD TO DECLASSIFY' in pp.locator('#secret-card').inner_text()
  assert pp.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2'),'Mobile horizontal scrolling detected'
  pp.reload();pp.locator('#secret-card').wait_for(timeout=10000)
  assert 'Guest 0' in pp.locator('body').inner_text()
@@ -80,6 +80,15 @@ with sync_playwright() as p:
  dp=deep.new_page();dp.goto('http://localhost:8711/#join=ABC234')
  assert dp.locator('#join-form').is_visible();assert dp.locator('#room-code').input_value()=='ABC234'
  dp.get_by_role('tab',name="I'M HOSTING").click();assert dp.locator('#create-form').is_visible()
+ # The backend-not-configured warning must remain present when config.js has no URL.
+ def offline_config(route):
+  if route.request.url.endswith('/config.js'):
+   return route.fulfill(status=200,content_type='text/javascript',body="window.GAME_API_ORIGIN='';")
+  return serve(route)
+ offline=browser.new_context(viewport={'width':390,'height':844})
+ offline.route('**/*',offline_config)
+ op=offline.new_page();op.goto('http://localhost:8711/')
+ assert op.get_by_text('Backend not configured.',exact=True).is_visible()
  assert not console,console
  print('CHROMIUM UI PASS: host QR, player join, peek and hide, refresh reclaim, zero console warnings/errors')
  browser.close()

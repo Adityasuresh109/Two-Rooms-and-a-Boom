@@ -38,7 +38,7 @@ class TestSocket {
  addEventListener(event,handler){(this.listeners[event]??=[]).push(handler);}
  emit(e,x){for(const f of this.listeners[e]??[])f(x);}
  send(msg){const m=JSON.parse(msg);if(m.type==='hello')setTimeout(()=>{
- const view=window.__testHost ? window.__testHost : window.__testPlayer;
+ const view=m.token==='host-secret' ? window.__testHost : window.__testPlayer;
  this.emit('message',{data:JSON.stringify({type:'state',state:view})});},15);
  else if(m.type==='ping')this.emit('message',{data:JSON.stringify({type:'pong',serverNow:Date.now()})});}
  close(){this.readyState=3;this.emit('close',{});}

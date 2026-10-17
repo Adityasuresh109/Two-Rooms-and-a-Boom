@@ -64,6 +64,7 @@ function setLeader(s,room,targetId) {
 function lock(s,room,ids,actor) {
   if(s.locks[room]) fail('Room already locked.');
   const count=hostageCount(s.playerCount,s.round), pool=roomPlayers(s,room);
+  if(pool.filter(p=>!p.removed&&p.id!==s.leaders[room]).length<count)fail('Not enough active players for hostage selection. Host must resolve abandoned seats.');
   if(!Array.isArray(ids) || ids.length!==count || new Set(ids).size!==ids.length) fail(`Select exactly ${count} different hostage(s).`);
   if(ids.some(id=>!pool.some(p=>p.id===id && !p.removed) || id===s.leaders[room])) fail('Each hostage must be in the room and cannot be its leader.');
   s.locks[room]={ids:[...ids],by:actor};
@@ -79,13 +80,18 @@ function exchange(s,now) {
 }
 export function expire(s,now) {
   if(s.phase==='ROUND' && now>=s.until) { s.phase='LOCKING';s.until=null;s.timeLeft=null;s.events.push({type:'TIME_UP',round:s.round,at:now}); exchange(s,now); return true; }
-  if(s.phase==='EXCHANGE' && now>=s.until){
+  if(s.phase==='EXCHANGE' && now>=s.until){s.until=null;s.events.push({type:'MOVEMENT_READY',round:s.round,at:now});return true;}
+  return false;
+}
+export function completeMovement(s,now){
+  if(s.phase!=='EXCHANGE') fail('No exchange to complete.');
+  if(s.players.some(p=>p.pendingMove&&!p.removed)) fail('Wait for player confirmations or use host override.');
+  {
     s.locks={A:null,B:null}; s.votes={A:{},B:{}};s.offers={A:null,B:null};s.cannotReturn={A:null,B:null};
     if(s.round===2){s.phase=s.players.some(p=>p.card==='GAMBLER')?'PREDICTION':'FINAL_READY';s.until=null;}
     else{ s.round++;s.phase='ROUND';s.until=now+ROUND_SECONDS[s.round]*1000; }
     s.events.push({type:'NEXT',round:s.round,at:now});return true;
   }
-  return false;
 }
 const mark = (s,now) => { s.revision++;s.events=s.events.slice(-60);s.lastChange=now; };
 export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random) {
@@ -112,7 +118,7 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
       const t=inOwnRoom(s,p,payload.id);if(t.id===s.leaders[p.room])fail('Choose someone other than the current leader.');
       s.votes[p.room][p.id]=t.id;
       const ballots=Object.values(s.votes[p.room]).filter(x=>x===t.id).length;
-      if(ballots>roomPlayers(s,p.room).length/2) setLeader(s,p.room,t.id);
+      if(ballots>roomPlayers(s,p.room).filter(x=>!x.removed).length/2) setLeader(s,p.room,t.id);
       break;
     }
     case 'abdicate': {
@@ -133,7 +139,7 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
     case 'host-pick': {
       host(auth);if(s.phase!=='LOCKING')fail('Host can select missed hostages after the timer expires.');
       if(!ROOMS.includes(payload.room))fail('Invalid room.');
-      if(!s.leaders[payload.room])fail('Assign a leader first.');
+      if(!s.leaders[payload.room]){const available=roomPlayers(s,payload.room).find(x=>!x.removed);if(!available)fail('No active players in this room.');s.leaders[payload.room]=available.id;}
       lock(s,payload.room,payload.ids,'HOST');exchange(s,now);break;
     }
     case 'force-advance': {
@@ -142,9 +148,9 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
     }
     case 'advance': {
       host(auth);if(s.phase!=='EXCHANGE')fail('Only an exchange can be accelerated.');
-      s.until=now;expire(s,now);break;
+      s.players.forEach(p=>{if(!p.removed)p.pendingMove=false;});completeMovement(s,now);break;
     }
-    case 'ack-move': {const p=self(s,auth);if(!p.pendingMove)fail('No move is pending.');p.pendingMove=false;break;}
+    case 'ack-move': {const p=self(s,auth);if(!p.pendingMove)fail('No move is pending.');p.pendingMove=false; if(s.phase==='EXCHANGE'&&!s.players.some(x=>x.pendingMove&&!x.removed))s.events.push({type:'MOVEMENT_CONFIRMED',round:s.round,at:now});break;}
     case 'prediction': {
       const p=self(s,auth);if(p.card!=='GAMBLER'||s.phase!=='PREDICTION')fail('Only the Gambler can predict before the reveal.');
       if(p.prediction)fail('Your prediction is already locked.');
@@ -158,7 +164,7 @@ export function dispatch(s,auth,action,payload={},now=Date.now(),rng=Math.random
     case 'remove': {
       host(auth);const p=s.players.find(p=>p.id===payload.id&&!p.removed);if(!p)fail('Player not found.');
       if(s.phase==='LOBBY')s.players=s.players.filter(x=>x.id!==p.id);
-      else {p.removed=true;p.token=null;p.pendingMove=false; /* Keep original seat and card for fair deck and hostage counts */ }
+      else {p.removed=true;p.token=null;p.pendingMove=false; /* Preserve original card and seat for verdict. */ if(p.room&&s.leaders[p.room]===p.id){s.leaders[p.room]=null;clearPolitics(s,p.room);} if(p.room){delete s.votes[p.room][p.id];for(const voter of Object.keys(s.votes[p.room]))if(s.votes[p.room][voter]===p.id)delete s.votes[p.room][voter];} }
       break;
     }
     case 'host-leader': {

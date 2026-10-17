@@ -12,7 +12,7 @@ const room=(s,r)=>s.players.filter(p=>p.room===r&&!p.removed);
 function start(n){const s=setup(n);act(s,host(s),'start');act(s,host(s),'begin');return s;}
 function nominate(s,r,now=1000){const players=room(s,r);if(!s.leaders[r])act(s,who(s,players[0]),'nominate',{id:players[1].id},now);return s.leaders[r];}
 function pick(s,r,now=1100){nominate(s,r);const leader=s.players.find(p=>p.id===s.leaders[r]);const ids=room(s,r).filter(p=>p.id!==leader.id).slice(0,hostageCount(s.playerCount,s.round)).map(p=>p.id);act(s,who(s,leader),'pick',{ids},now);return ids;}
-function finishRound(s,now){if(!s.locks.A)pick(s,'A',now-1000);if(!s.locks.B)pick(s,'B',now-1000);assert.equal(expire(s,now),true);assert.equal(s.phase,'EXCHANGE');assert.equal(expire(s,now+25000),true);}
+function finishRound(s,now){if(!s.locks.A)pick(s,'A',now-1000);if(!s.locks.B)pick(s,'B',now-1000);assert.equal(expire(s,now),true);assert.equal(s.phase,'EXCHANGE');assert.equal(expire(s,now+25000),true);assert.equal(s.phase,'EXCHANGE');act(s,host(s),'advance',{},now+25001);}
 test('deck composition and official chart for all 6-30 players',()=>{
  for(let n=6;n<=30;n++){const deck=createDeck(n);assert.equal(deck.length,n);assert.equal(deck.filter(x=>x==='PRESIDENT').length,1);assert.equal(deck.filter(x=>x==='BOMBER').length,1);assert.equal(deck.filter(x=>x==='GAMBLER').length,n%2);assert.equal(deck.filter(x=>x==='BLUE').length,deck.filter(x=>x==='RED').length);}
  for(const [n,chart] of [[6,[1,1,1]],[10,[1,1,1]],[11,[2,1,1]],[21,[2,1,1]],[22,[3,2,1]],[25,[3,2,1]],[30,[3,2,1]]])assert.deepEqual([0,1,2].map(r=>hostageCount(n,r)),chart);
@@ -100,7 +100,7 @@ test('full 25 simulated-client game: three elections, three exchanges, live view
   for(const p of s.players){const view=publicView(s,authFor(s,simulatedClients.get(p.id)),time-1);assert.equal(view.me.card,p.card);assert.equal(view.players.every(x=>x.card===undefined),true);}
   assert.equal(expire(s,time),true);assert.equal(s.phase,'EXCHANGE');
   for(const p of s.players.filter(p=>p.pendingMove))act(s,who(s,p),'ack-move',{},time+10);
-  assert.equal(expire(s,time+25000),true);
+  assert.equal(expire(s,time+25000),true);assert.equal(s.phase,'EXCHANGE');act(s,host(s),'advance',{},time+25001);
   assert.deepEqual([room(s,'A').length,room(s,'B').length],[13,12]);
  }
  const gambler=s.players.find(p=>p.card==='GAMBLER');act(s,who(s,gambler),'prediction',{team:winner(s)},411031);

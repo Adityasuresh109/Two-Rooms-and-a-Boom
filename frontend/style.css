@@ -32,3 +32,15 @@ button.primary{background:linear-gradient(135deg,#ffe27b,#f7b936);box-shadow:0 6
 .stepper b{font-size:2rem;min-width:3ch;text-align:center;font-variant-numeric:tabular-nums;color:#f8cc46}
 .stepper button{width:58px;height:58px;min-height:0;padding:0;border-radius:18px;font-size:1.6rem;line-height:1}
 @media(max-width:560px){.lobby-top{gap:16px}.lobby-qr{margin:0 auto}}
+
+/* How-to-play rules overlay */
+.rules-backdrop{position:fixed;inset:0;z-index:80;background:#060a16d9;display:flex;align-items:flex-start;justify-content:center;padding:calc(28px + env(safe-area-inset-top,0px)) 16px calc(28px + env(safe-area-inset-bottom,0px));overflow-y:auto}
+.rules-card{position:relative;max-width:560px;width:100%;background:#141f34;border:1px solid #3d4c6b;border-radius:20px;padding:clamp(20px,4vw,32px);box-shadow:0 25px 80px #000c}
+.rules-card h2{margin:6px 0 18px;font-size:1.7rem;letter-spacing:-.02em}
+.rules-x{position:absolute;top:12px;right:12px;width:44px;height:44px;min-height:0;padding:0;border-radius:12px;font-size:1.1rem}
+.rules-body{display:grid;gap:14px}
+.rules-body>div{display:grid;gap:4px;padding:14px 16px;background:#101a30;border:1px solid #2c3a58;border-radius:14px}
+.rules-body b{color:#f8cc46}
+.rules-body span{color:#c9d3e6;line-height:1.55;font-size:.95rem}
+.rules-body span b{color:inherit}
+.rules-btn{width:44px;height:44px;min-height:0;padding:0;border-radius:12px;font-size:1.15rem;font-weight:900}

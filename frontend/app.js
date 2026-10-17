@@ -10,6 +10,19 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const person=(id)=>state?.players.find(p=>p.id===id);
 const codeFromHash=()=>{const m=location.hash.match(/(?:^#|[&?])join=([A-HJ-NP-Z2-9]{6})/i);return m?.[1]?.toUpperCase()||'';};
 let landingTab=codeFromHash()?'join':'host';
+let rulesOpen=false;
+function rulesContent(){return `<div class="rules-card" role="dialog" aria-modal="true" aria-label="How to play">
+<button class="ghost small rules-x" data-action="rules-x" type="button" aria-label="Close">✕</button>
+<div class="eyebrow">HOW TO PLAY</div><h2>Two Rooms &amp; a Boom</h2>
+<div class="rules-body">
+<div><b>The secret teams.</b><span>Everyone gets a hidden card: red team or blue team. The <b class="bluetext">President</b> leads blue, the <b class="redtext">Bomber</b> leads red. With an odd number of players, one person is the <b>Gambler</b>.</span></div>
+<div><b>The goal.</b><span>When the game ends, if the President and the Bomber are in the <b>same</b> room, <b class="redtext">red wins</b>. If they're in <b>different</b> rooms, <b class="bluetext">blue wins</b>. The Gambler wins alone by predicting the winner before the reveal.</span></div>
+<div><b>Your card is secret.</b><span>Hold your card to peek at it. Share as much or as little as you like — bluffing is part of the game.</span></div>
+<div><b>Three rounds.</b><span>Each round is timed. When time runs out, each room's leader picks <b>hostages</b> who swap rooms. That's how the President and Bomber move around.</span></div>
+<div><b>Leaders.</b><span>Each room picks a leader. A majority can overthrow the leader at any time and choose a new one.</span></div>
+<div><b>The finale.</b><span>After the third swap, everyone reveals their cards at the same time. Then: boom, or no boom.</span></div>
+</div></div>`;}
+function rulesOverlay(){return rulesOpen?`<div class="rules-backdrop" data-action="rules-close">${rulesContent()}</div>`:'';}
 function store(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
 function read(key){try{return JSON.parse(localStorage.getItem(key)||'null');}catch{return null;}}
 function forget(key){try{localStorage.removeItem(key);}catch{}}
@@ -85,7 +98,7 @@ setInterval(()=>{
 document.getElementById('retry').addEventListener('click',()=>{attempt=0;connect();});
 const btn=(label,act,payload={},cls='secondary')=>`<button class="${cls}" data-action="${esc(act)}" data-data="${esc(JSON.stringify(payload))}" type="button">${esc(label)}</button>`;
 const panel=(content,cls='')=>`<section class="panel ${cls}">${content}</section>`;
-function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row"><span class="pill">${esc(session.code)}</span><span class="pill">${session.role==='host'?'HOST':esc(state?.me?.name||'PLAYER')}</span></div>`:''}</header>`;}
+function header(){return `<header class="top"><div class="brand">AD ARCADE <span class="muted">/</span> TWO ROOMS & A BOOM</div>${session?`<div class="row"><span class="pill">${esc(session.code)}</span><span class="pill">${session.role==='host'?'HOST':esc(state?.me?.name||'PLAYER')}</span>${btn('?','rules-open',{},'ghost small rules-btn')}</div>`:''}</header>`;}
 function qrSvg(text){
   try{const q=window.makeQR(text),n=q.getModuleCount(),cells=[];
     for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(q.isDark(y,x))cells.push(`<rect x="${x+4}" y="${y+4}" width="1" height="1"/>`);
@@ -97,7 +110,7 @@ function startPage(){
  const hostTab=landingTab==='host';
  const content=hostTab?`<h2>HOST A PARTY</h2><form id="create-form" class="stack"><label for="count">Player count (host doesn't play)</label><input id="count" type="number" min="6" max="30" value="25" required><button class="primary" type="submit">CREATE GAME</button></form>${read(keyHost)?`<div class="spaced">${btn('RESUME LAST SESSION','restore-host',{},'ghost')}</div>`:''}<p class="help">Open this on your laptop or TV. Players join from their phones — nothing to install.</p>`:
  `<h2>JOIN THE PARTY</h2><form id="join-form" class="stack"><label for="room-code">Room code</label><input id="room-code" name="room" value="${esc(joining)}" maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters" required><label for="player-name">Your name</label><input id="player-name" name="name" maxlength="24" minlength="2" required><button class="primary" type="submit">JOIN ROOM</button></form>${remembered?.token?`<div class="spaced">${btn('RECLAIM MY SEAT','restore-player',{code:joining},'ghost')}</div>`:''}<p class="help">Fastest way in: scan the QR code on the host's screen.</p>`;
- return `<div class="shell landing"><header class="top"><div class="brand">AD ARCADE</div></header><section class="landing-hero"><h1>TWO ROOMS<br><span class="gold">&amp;</span> A BOOM</h1><p>Two teams. Two rooms. Three rounds. One secret in every pocket — and one boom at the end.</p><div class="team-split"><span></span><span></span></div></section>
+ return `<div class="shell landing"><header class="top"><div class="brand">AD ARCADE</div></header><section class="landing-hero"><h1>TWO ROOMS<br><span class="gold">&amp;</span> A BOOM</h1><p>Two teams. Two rooms. Three rounds. One secret in every pocket — and one boom at the end.</p><div class="team-split"><span></span><span></span></div><div class="center" style="margin-top:18px"><button class="ghost" data-action="rules-open" type="button">HOW TO PLAY</button></div></section>
  <div class="landing-form"><div class="landing-tabs" role="tablist"><button type="button" role="tab" aria-selected="${hostTab}" class="${hostTab?'active':''}" data-action="landing-tab" data-data='{"tab":"host"}'>I'M HOSTING</button><button type="button" role="tab" aria-selected="${!hostTab}" class="${!hostTab?'active':''}" data-action="landing-tab" data-data='{"tab":"join"}'>I'M JOINING</button></div>
  ${!configured?panel('<strong>Backend not configured.</strong><p>Realtime play is unavailable until the Cloudflare Worker is deployed.</p>','warn'):''}${panel(content)}</div>
  <section class="how-strip">${['Split into two physical rooms','Everyone gets a secret card','Three timed rounds, hostages swap','Bomber meets President? Boom.'].map((x,i)=>`<div><b>${i+1}</b><span>${x}</span></div>`).join('')}</section>${footer()}</div>`;
@@ -166,10 +179,10 @@ function playerRound(){if(state.me.pendingMove)return `<section class="full ${st
 function playerReveal(){return `${results()}${panel(`<h2>YOUR CARD: ${esc(state.me.card)}</h2><div class="card-face ${esc(state.me.card)}">${cardFace(state.me.card)}</div>`)}`;}
 function host(){return `<div class="shell">${header()}${state.phase==='LOBBY'?hostLobby():state.phase==='TRAVEL'?hostTravel():hostGame()}${footer()}</div>`;}
 function player(){return `<div class="shell">${header()}${state.phase==='LOBBY'?playerLobby():state.phase==='TRAVEL'?playerTravel():state.phase==='REVEALED'?playerReveal():playerRound()}${footer()}</div>`;}
-function render(){root.innerHTML=!session?startPage():!state?`<div class="shell">${header()}${panel('<h2>CONNECTING TO YOUR ROOM…</h2><p>The connection status will appear if the backend is unreachable.</p>')}</div>`:session.role==='host'?host():player();}
+function render(){root.innerHTML=(!session?startPage():!state?`<div class="shell">${header()}${panel('<h2>CONNECTING TO YOUR ROOM…</h2><p>The connection status will appear if the backend is unreachable.</p>')}</div>`:session.role==='host'?host():player())+rulesOverlay();}
 root.addEventListener('pointerdown',e=>{if(e.target.closest('#secret-card')){e.preventDefault();peekCard(true);}});
 root.addEventListener('keydown',e=>{if(e.target.id==='secret-card'&&(e.key===' '||e.key==='Enter')){e.preventDefault();peekCard(true);}});
-root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false);});
+root.addEventListener('keyup',e=>{if(e.target.id==='secret-card')peekCard(false);if(e.key==='Escape'&&rulesOpen){rulesOpen=false;render();}});
 root.addEventListener('submit',async e=>{
   e.preventDefault();if(waiting)return;
   // command() owns the busy flag. Pre-setting waiting would silently cancel this update.
@@ -195,6 +208,9 @@ root.addEventListener('click',async e=>{
   const action=b.dataset.action;let data={};try{data=JSON.parse(b.dataset.data||'{}');}catch{}
   if(action==='landing-tab'){landingTab=data.tab==='join'?'join':'host';render();return;}
   if(action==='count-step'){await command('set-count',{count:state.target+data.delta});return;}
+  if(action==='rules-open'){rulesOpen=true;render();return;}
+  if(action==='rules-x'){rulesOpen=false;render();return;}
+  if(action==='rules-close'){if(e.target.closest('.rules-card'))return;rulesOpen=false;render();return;}
   if(action==='copy'){try{await navigator.clipboard.writeText(joinLink());notify('JOIN LINK COPIED');}catch{notify(joinLink());}return;}
   if(action==='refresh'){await refresh();return;}
   if(action==='restore-host'){const s=read(keyHost);if(s)beginSession('host',s.code,s.token);return;}
